@@ -14,7 +14,9 @@
 #
 """This module defines the solver interface."""
 
+import inspect
 import unified_planning as up
+from unified_planning.environment import get_env
 import unified_planning.model
 from unified_planning.plan import (
     Plan,
@@ -42,12 +44,18 @@ class SolverImpl(up.solvers.Solver):
         if (
             len(options) != 2
             or "solver" not in options
-            or not isinstance(options["solver"], SkDecideSolver)
+            or not issubclass(options["solver"], SkDecideSolver)
+            or "config" not in options
+            or not isinstance(options["config"], dict)
         ):
             raise RuntimeError(
-                "SkDecide's UP solver only accepts the 'solver' option (SkDecide's underlying solver) and its config dictionary"
+                "SkDecide's UP solver only accepts the 'solver' option (SkDecide's underlying solver) and its config dictionary. Provided options: {}".format(
+                    options
+                )
             )
-        self._solver = options["solver"]
+        self._solver_class = options["solver"]
+        self._solver_config = options["config"]
+        self._options = options
 
     @staticmethod
     def name() -> str:
@@ -77,13 +85,29 @@ class SolverImpl(up.solvers.Solver):
 
     def solve(self, problem: "up.model.Problem") -> Optional["up.plan.Plan"]:
         domain = DomainImpl(problem)
-        if len(match_solvers(domain, [self._solver])) == 0:
+        if len(match_solvers(domain, [self._solver_class])) == 0:
             raise RuntimeError(
                 "The scikit-decide's solver {} is not compatible with this problem".format(
-                    self._solver.__name__
+                    self._solver_class.__name__
                 )
             )
-        # with self._solver()
+        if (
+            "domain_factory"
+            in inspect.signature(self._solver_class.__init__).parameters
+        ):
+            self._solver_config.update(
+                {"domain_factory": lambda: DomainImpl(problem, **self._options)}
+            )
+        plan = []
+        with self._solver_class(**self._solver_config) as solver:
+            solver.solve(lambda: DomainImpl(problem, **self._options))
+            rollout_domain = DomainImpl(problem, **self._options)
+            state = rollout_domain.reset()
+            while not rollout_domain.is_terminal(state):
+                action = solver.sample_action(state)
+                state = rollout_domain.get_next_state(state, action)
+                plan.append(action)
+        return rollout_domain.rewrite_back_plan_function(plan)
 
     def validate(self, problem: "up.model.Problem", plan: "up.plan.Plan") -> bool:
         raise NotImplementedError
@@ -105,7 +129,7 @@ class SolverImpl(up.solvers.Solver):
         raise NotImplementedError
 
     def destroy(self):
-        raise NotImplementedError
+        pass
 
     def __enter__(self):
         """Manages entering a Context (i.e., with statement)"""
@@ -114,3 +138,6 @@ class SolverImpl(up.solvers.Solver):
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Manages exiting from Context (i.e., with statement)"""
         self.destroy()
+
+
+get_env().factory.add_solver("SkDecide", "up_skdecide.solver", "SolverImpl")
