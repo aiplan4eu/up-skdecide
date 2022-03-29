@@ -14,12 +14,11 @@
 #
 """This module defines the skdecide domain interface."""
 
-from typing import Dict, Optional, Union
-from copy import deepcopy
+from typing import Dict, Optional
 
 from skdecide.core import ImplicitSpace, Space, Value
 from skdecide.domains import DeterministicPlanningDomain
-from skdecide.hub.space.gym import ListSpace
+from skdecide.hub.space.gym import ListSpace, MultiBinarySpace
 
 import unified_planning as up
 from unified_planning.shortcuts import *
@@ -35,8 +34,6 @@ class D(DeterministicPlanningDomain):
 
 class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
     def __init__(self, problem: "up.model.Problem", **options):
-        if len(options) > 0:
-            raise
         up.solvers.plan_validator.SequentialPlanValidator.__init__(self, **options)
         self._problem = problem
         self._env: "up.environment.Environment" = up.environment.get_env()
@@ -46,13 +43,25 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
             self._grounded_problem, self._rewrite_back_plan_function = grounder.ground(
                 problem
             )
-
-    def _get_next_state(self, memory: D.T_state, action: D.T_event) -> D.T_state:
-        assert isinstance(action, up.model.InstantaneousAction)
         self._qsimplifier = up.solvers.plan_validator.QuantifierSimplifier(
             self._env, self._grounded_problem
         )
-        assignments = memory.copy()
+        self._initial_state_dict = self._grounded_problem.initial_values().copy()
+        self._state_dict_keys = self._initial_state_dict.keys()
+
+    @property
+    def grounded_problem(self) -> str:
+        """Returns the grounded problem."""
+        return self._grounded_problem
+
+    @property
+    def rewrite_back_plan_function(self) -> str:
+        """Returns the back plan rewriter."""
+        return self._rewrite_back_plan_function
+
+    def _get_next_state(self, memory: D.T_state, action: D.T_event) -> D.T_state:
+        assert isinstance(action, up.model.InstantaneousAction)
+        assignments = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
         new_assignments: Dict[up.model.Expression, up.model.Expression] = {}
         for ap, oe in zip(action.parameters(), action.parameters()):
             assignments[ap] = oe
@@ -84,7 +93,7 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         assignments.update(new_assignments)
         for ap in action.parameters():
             del assignments[ap]
-        return assignments
+        return list(assignments.values())
 
     def _get_transition_value(
         self,
@@ -95,7 +104,8 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         # TODO: how to get the reward or cost fluent?
         return Value(cost=1)
 
-    def _is_terminal(self, state: D.T_state) -> D.T_predicate:
+    def _is_terminal(self, memory: D.T_state) -> D.T_predicate:
+        state = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
         for g in self._grounded_problem.goals():
             gs = self._subs_simplify(g, state)
             if not (gs.is_bool_constant() and gs.bool_constant_value()):
@@ -107,13 +117,13 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         return ListSpace(self._grounded_problem.actions())
 
     def _get_applicable_actions_from(self, memory: D.T_state) -> Space[D.T_event]:
+        state = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
         actions = []
         for ai in self._grounded_problem.actions():
             for p in ai.preconditions():
-                ps = self._subs_simplify(p, memory)
+                ps = self._subs_simplify(p, state)
                 if ps.is_bool_constant() and ps.bool_constant_value():
                     actions.append(ai)
-        # TODO: how to get action instantiations?
         return ListSpace(actions)
 
     def _get_goals_(self) -> Space[D.T_observation]:
@@ -121,8 +131,8 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
 
     def _get_initial_state_(self) -> D.T_state:
         self._last_error = None
-        return self._grounded_problem.initial_values().copy()
+        return list(self._initial_state_dict.values())
 
     def _get_observation_space_(self) -> Space[D.T_observation]:
         # TODO: not clear what to do here, it will depend on the algorithm
-        pass
+        return MultiBinarySpace(len(self._initial_state_dict))
