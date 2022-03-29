@@ -22,6 +22,7 @@ from skdecide.domains import DeterministicPlanningDomain
 from skdecide.hub.space.gym import ListSpace
 
 import unified_planning as up
+from unified_planning.shortcuts import *
 
 
 class D(DeterministicPlanningDomain):
