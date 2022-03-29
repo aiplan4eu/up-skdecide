@@ -1,0 +1,3 @@
+scikit-decide==0.9.4
+simplejson==3.17.6
+gym==0.23.1
