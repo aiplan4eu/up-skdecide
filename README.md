@@ -1,2 +1,2 @@
-# skdecide-upf
-Scikit-decide wrapper for UPF
+# up-skdecide
+Scikit-decide wrapper for UP
