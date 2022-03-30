@@ -120,10 +120,14 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         state = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
         actions = []
         for ai in self._grounded_problem.actions():
+            all_preconditions_hold = True
             for p in ai.preconditions():
                 ps = self._subs_simplify(p, state)
-                if ps.is_bool_constant() and ps.bool_constant_value():
-                    actions.append(ai)
+                if not (ps.is_bool_constant() and ps.bool_constant_value()):
+                    all_preconditions_hold = False
+                    break
+            if all_preconditions_hold:
+                actions.append(ai)
         return ListSpace(actions)
 
     def _get_goals_(self) -> Space[D.T_observation]:
