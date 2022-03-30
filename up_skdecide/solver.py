@@ -17,16 +17,13 @@
 import inspect
 import unified_planning as up
 from unified_planning.environment import get_env
-import unified_planning.model
 from unified_planning.plan import (
     Plan,
     ActionInstance,
     SequentialPlan,
-    TimeTriggeredPlan,
 )
-from unified_planning.model import ProblemKind, Problem, Action, FNode
-from functools import partial
-from typing import Optional, Tuple, Dict, List, Callable, Union
+from unified_planning.model import ProblemKind, Problem
+from typing import Optional, Tuple, Callable, Union
 from skdecide.solvers import Solver as SkDecideSolver
 from skdecide.utils import match_solvers
 from .domain import DomainImpl
@@ -107,7 +104,9 @@ class SolverImpl(up.solvers.Solver):
                 action = solver.sample_action(state)
                 state = rollout_domain.get_next_state(state, action)
                 plan.append(action)
-        return rollout_domain.rewrite_back_plan_function(plan)
+        return rollout_domain.rewrite_back_plan_function(
+            SequentialPlan([ActionInstance(x) for x in plan])
+        )
 
     def validate(self, problem: "up.model.Problem", plan: "up.plan.Plan") -> bool:
         raise NotImplementedError
