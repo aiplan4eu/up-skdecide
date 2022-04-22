@@ -46,7 +46,7 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         self._qsimplifier = up.solvers.plan_validator.QuantifierSimplifier(
             self._env, self._grounded_problem
         )
-        self._initial_state_dict = self._grounded_problem.initial_values().copy()
+        self._initial_state_dict = self._grounded_problem.initial_values.copy()
         self._state_dict_keys = self._initial_state_dict.keys()
 
     @property
@@ -63,35 +63,35 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         assert isinstance(action, up.model.InstantaneousAction)
         assignments = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
         new_assignments: Dict[up.model.Expression, up.model.Expression] = {}
-        for ap, oe in zip(action.parameters(), action.parameters()):
+        for ap, oe in zip(action.parameters, action.parameters):
             assignments[ap] = oe
-        for p in action.preconditions():
+        for p in action.preconditions:
             ps = self._subs_simplify(p, assignments)
             if not (ps.is_bool_constant() and ps.bool_constant_value()):
                 self._last_error = (
                     f"Precondition {p} of action {str(action)} is not satisfied."
                 )
                 return False
-        for e in action.effects():
+        for e in action.effects:
             cond = True
             if e.is_conditional():
-                ec = self._subs_simplify(e.condition(), assignments)
+                ec = self._subs_simplify(e.condition, assignments)
                 assert ec.is_bool_constant()
                 cond = ec.bool_constant_value()
             if cond:
-                ge = self._get_ground_fluent(e.fluent(), assignments)
+                ge = self._get_ground_fluent(e.fluent, assignments)
                 if e.is_assignment():
-                    new_assignments[ge] = self._subs_simplify(e.value(), assignments)
+                    new_assignments[ge] = self._subs_simplify(e.value, assignments)
                 elif e.is_increase():
                     new_assignments[ge] = self._subs_simplify(
-                        self.manager.Plus(e.fluent(), e.value()), assignments
+                        self.manager.Plus(e.fluent, e.value), assignments
                     )
                 elif e.is_decrease():
                     new_assignments[ge] = self._subs_simplify(
-                        self.manager.Minus(e.fluent(), e.value()), assignments
+                        self.manager.Minus(e.fluent, e.value), assignments
                     )
         assignments.update(new_assignments)
-        for ap in action.parameters():
+        for ap in action.parameters:
             del assignments[ap]
         return list(assignments.values())
 
@@ -106,7 +106,7 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
 
     def _is_terminal(self, memory: D.T_state) -> D.T_predicate:
         state = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
-        for g in self._grounded_problem.goals():
+        for g in self._grounded_problem.goals:
             gs = self._subs_simplify(g, state)
             if not (gs.is_bool_constant() and gs.bool_constant_value()):
                 return False
@@ -114,14 +114,14 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
 
     def _get_action_space_(self) -> Space[D.T_event]:
         # TODO: how to get all the action instantiations? Do we really want to do that?
-        return ListSpace(self._grounded_problem.actions())
+        return ListSpace(self._grounded_problem.actions)
 
     def _get_applicable_actions_from(self, memory: D.T_state) -> Space[D.T_event]:
         state = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
         actions = []
-        for ai in self._grounded_problem.actions():
+        for ai in self._grounded_problem.actions:
             all_preconditions_hold = True
-            for p in ai.preconditions():
+            for p in ai.preconditions:
                 ps = self._subs_simplify(p, state)
                 if not (ps.is_bool_constant() and ps.bool_constant_value()):
                     all_preconditions_hold = False
