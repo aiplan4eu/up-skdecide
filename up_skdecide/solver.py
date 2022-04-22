@@ -16,22 +16,13 @@
 
 import inspect
 import unified_planning as up
-from unified_planning.environment import get_env
-from unified_planning.plan import (
-    Plan,
-    ActionInstance,
-    SequentialPlan,
-)
-from unified_planning.model import ProblemKind, Problem
+from unified_planning.solvers import PlanGenerationResultStatus
+from unified_planning.plan import ActionInstance, SequentialPlan
+from unified_planning.model import ProblemKind
 from typing import Optional, Tuple, Callable, Union
 from skdecide.solvers import Solver as SkDecideSolver
 from skdecide.utils import match_solvers
 from .domain import DomainImpl
-
-
-OPTIMALITY_GUARANTEES = list(range(0, 2))
-
-(SATISFICING, OPTIMAL) = OPTIMALITY_GUARANTEES
 
 
 class SolverImpl(up.solvers.Solver):
@@ -54,8 +45,8 @@ class SolverImpl(up.solvers.Solver):
         self._solver_config = options["config"]
         self._options = options
 
-    @staticmethod
-    def name() -> str:
+    @property
+    def name(self) -> str:
         return "SkDecide"
 
     @staticmethod
@@ -67,21 +58,13 @@ class SolverImpl(up.solvers.Solver):
         return False
 
     @staticmethod
-    def is_plan_validator() -> bool:
-        return False
-
-    @staticmethod
-    def is_grounder() -> bool:
-        return False
-
-    @staticmethod
     def supports(problem_kind: "ProblemKind") -> bool:
         supported_kind = ProblemKind()
         supported_kind.set_time("DISCRETE_TIME")
         return problem_kind.features().issubset(supported_kind.features())
 
     def solve(self, problem: "up.model.Problem") -> Optional["up.plan.Plan"]:
-        domain = DomainImpl(problem)
+        domain = DomainImpl(problem, **self._options)
         if len(match_solvers(domain, [self._solver_class])) == 0:
             raise RuntimeError(
                 "The scikit-decide's solver {} is not compatible with this problem".format(
@@ -93,50 +76,21 @@ class SolverImpl(up.solvers.Solver):
             in inspect.signature(self._solver_class.__init__).parameters
         ):
             self._solver_config.update(
-                {"domain_factory": lambda: DomainImpl(problem, **self._options)}
+                {"domain_factory": lambda: domain}
             )
         plan = []
         with self._solver_class(**self._solver_config) as solver:
-            solver.solve(lambda: DomainImpl(problem, **self._options))
-            rollout_domain = DomainImpl(problem, **self._options)
+            solver.solve(lambda: domain)
+            rollout_domain = domain
             state = rollout_domain.reset()
             while not rollout_domain.is_terminal(state):
                 action = solver.sample_action(state)
                 state = rollout_domain.get_next_state(state, action)
                 plan.append(action)
-        return rollout_domain.rewrite_back_plan_function(
+        seq_plan = rollout_domain.rewrite_back_plan_function(
             SequentialPlan([ActionInstance(x) for x in plan])
         )
-
-    def validate(self, problem: "up.model.Problem", plan: "up.plan.Plan") -> bool:
-        raise NotImplementedError
-
-    def ground(
-        self, problem: "up.model.Problem"
-    ) -> Tuple[Problem, Callable[[Plan], Plan]]:
-        """
-        Implement only if "self.is_grounder()" returns True.
-        This function should return the tuple (grounded_problem, trace_back_plan), where
-        "trace_back_plan" is a callable from a plan for the "grounded_problem" to a plan of the
-        original problem.
-
-        NOTE: to create a callable, the "functools.partial" method can be used, as we do in the
-        "up.solvers.grounder".
-
-        Also, the "up.solvers.grounder.lift_plan" function can be called, if retrieving the needed map
-        fits the solver implementation better than retrieving a function."""
-        raise NotImplementedError
+        return up.solvers.PlanGenerationResult(PlanGenerationResultStatus.SOLVED_SATISFICING, seq_plan, self.name)
 
     def destroy(self):
         pass
-
-    def __enter__(self):
-        """Manages entering a Context (i.e., with statement)"""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Manages exiting from Context (i.e., with statement)"""
-        self.destroy()
-
-
-get_env().factory.add_solver("SkDecide", "up_skdecide.solver", "SolverImpl")
