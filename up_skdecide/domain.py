@@ -21,7 +21,6 @@ from skdecide.domains import DeterministicPlanningDomain
 from skdecide.hub.space.gym import ListSpace, MultiBinarySpace
 
 import unified_planning as up
-from unified_planning.shortcuts import *
 
 
 class D(DeterministicPlanningDomain):
@@ -36,9 +35,9 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
     def __init__(self, problem: "up.model.Problem", **options):
         up.solvers.plan_validator.SequentialPlanValidator.__init__(self, **options)
         self._problem = problem
-        self._env: "up.environment.Environment" = up.environment.get_env()
+        self._env = problem.env
         with self._env.factory.Grounder(
-            problem_kind=up.model.ProblemKind()
+            problem_kind=problem.kind
         ) as grounder:
             self._grounded_problem, self._rewrite_back_plan_function = grounder.ground(
                 problem
