@@ -60,11 +60,11 @@ class SolverImpl(up.solvers.Solver):
     @staticmethod
     def supports(problem_kind: "ProblemKind") -> bool:
         supported_kind = ProblemKind()
-        supported_kind.set_time("DISCRETE_TIME")
+        # supported_kind.set_time("DISCRETE_TIME") // This is not supported at the moment
         return problem_kind.features().issubset(supported_kind.features())
 
-    def solve(self, problem: "up.model.Problem") -> Optional["up.plan.Plan"]:
-        domain = DomainImpl(problem, **self._options)
+    def solve(self, problem: "up.model.Problem") -> "up.solvers.PlanGenerationResultStatus":
+        domain = DomainImpl(problem)
         if len(match_solvers(domain, [self._solver_class])) == 0:
             raise RuntimeError(
                 "The scikit-decide's solver {} is not compatible with this problem".format(
@@ -76,18 +76,18 @@ class SolverImpl(up.solvers.Solver):
             in inspect.signature(self._solver_class.__init__).parameters
         ):
             self._solver_config.update(
-                {"domain_factory": lambda: domain}
+                {"domain_factory": lambda: DomainImpl(problem, **self._options)}
             )
         plan = []
         with self._solver_class(**self._solver_config) as solver:
-            solver.solve(lambda: domain)
-            rollout_domain = domain
+            solver.solve(lambda: DomainImpl(problem, **self._options))
+            rollout_domain = DomainImpl(problem, **self._options)
             state = rollout_domain.reset()
             while not rollout_domain.is_terminal(state):
                 action = solver.sample_action(state)
                 state = rollout_domain.get_next_state(state, action)
-                plan.append(action)
-        seq_plan = rollout_domain.rewrite_back_plan_function(
+                plan.append(rollout_domain.grounded_problem.action(action.name))
+        seq_plan = rollout_domain.rewrite_back_plan(
             SequentialPlan([ActionInstance(x) for x in plan])
         )
         return up.solvers.PlanGenerationResult(PlanGenerationResultStatus.SOLVED_SATISFICING, seq_plan, self.name)
