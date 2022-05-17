@@ -39,9 +39,9 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         with self._env.factory.Grounder(
             problem_kind=problem.kind
         ) as grounder:
-            self._grounded_problem, self._rewrite_back_plan_function = grounder.ground(
-                problem
-            )
+            gounding_result = grounder.ground(problem)
+            self._grounded_problem = gounding_result.problem
+            self._lift_action_instance = gounding_result.lift_action_instance
         self._qsimplifier = up.solvers.plan_validator.QuantifierSimplifier(
             self._env, self._grounded_problem
         )
@@ -49,14 +49,13 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
         self._state_dict_keys = self._initial_state_dict.keys()
 
     @property
-    def grounded_problem(self) -> str:
+    def grounded_problem(self) -> 'up.model.Problem':
         """Returns the grounded problem."""
         return self._grounded_problem
 
-    @property
-    def rewrite_back_plan_function(self) -> str:
+    def rewrite_back_plan(self, plan: 'up.plan.Plan') -> 'up.plan.Plan':
         """Returns the back plan rewriter."""
-        return self._rewrite_back_plan_function
+        return plan.replace_action_instances(self._lift_action_instance)
 
     def _get_next_state(self, memory: D.T_state, action: D.T_event) -> D.T_state:
         assert isinstance(action, up.model.InstantaneousAction)
