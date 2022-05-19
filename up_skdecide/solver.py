@@ -22,6 +22,7 @@ from unified_planning.model import ProblemKind
 from typing import Optional, Tuple, Callable, Union
 from skdecide.solvers import Solver as SkDecideSolver
 from skdecide.utils import match_solvers
+from skdecide.hub.solver.iw import IW
 from .domain import DomainImpl
 
 
@@ -29,7 +30,12 @@ class SolverImpl(up.solvers.Solver):
     """Represents the solver interface."""
 
     def __init__(self, **options):
-        if (
+        if len(options) == 0:
+            self._options = {
+                "solver": IW,
+                "config": {"state_features": lambda d, s: s},
+            }
+        elif (
             len(options) != 2
             or "solver" not in options
             or not issubclass(options["solver"], SkDecideSolver)
@@ -41,9 +47,10 @@ class SolverImpl(up.solvers.Solver):
                     options
                 )
             )
-        self._solver_class = options["solver"]
-        self._solver_config = options["config"]
-        self._options = options
+        else:
+            self._options = options
+        self._solver_class = self._options["solver"]
+        self._solver_config = self._options["config"]
 
     @property
     def name(self) -> str:
@@ -63,7 +70,9 @@ class SolverImpl(up.solvers.Solver):
         # supported_kind.set_time("DISCRETE_TIME") // This is not supported at the moment
         return problem_kind.features().issubset(supported_kind.features())
 
-    def solve(self, problem: "up.model.Problem") -> "up.solvers.PlanGenerationResultStatus":
+    def solve(
+        self, problem: "up.model.Problem"
+    ) -> "up.solvers.PlanGenerationResultStatus":
         domain = DomainImpl(problem)
         if len(match_solvers(domain, [self._solver_class])) == 0:
             raise RuntimeError(
@@ -90,7 +99,9 @@ class SolverImpl(up.solvers.Solver):
         seq_plan = rollout_domain.rewrite_back_plan(
             SequentialPlan([ActionInstance(x) for x in plan])
         )
-        return up.solvers.PlanGenerationResult(PlanGenerationResultStatus.SOLVED_SATISFICING, seq_plan, self.name)
+        return up.solvers.PlanGenerationResult(
+            PlanGenerationResultStatus.SOLVED_SATISFICING, seq_plan, self.name
+        )
 
     def destroy(self):
         pass
