@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""This module defines the solver interface."""
+"""This module defines the engine interface."""
 
 import inspect
 import unified_planning as up
-from unified_planning.solvers import PlanGenerationResultStatus
-from unified_planning.plan import ActionInstance, SequentialPlan
+from unified_planning.engines import PlanGenerationResultStatus, Engine, Credits
+from unified_planning.engines.mixins import OneshotPlannerMixin
+from unified_planning.plans import ActionInstance, SequentialPlan
 from unified_planning.model import ProblemKind
 from typing import Optional, Tuple, Callable, Union
 from skdecide.solvers import Solver as SkDecideSolver
@@ -26,8 +27,17 @@ from skdecide.hub.solver.iw import IW
 from .domain import DomainImpl
 
 
-class SolverImpl(up.solvers.Solver):
-    """Represents the solver interface."""
+credits = Credits('Scikit-decide',
+                  'Airbus Team',
+                  'florent.teichteil-koenigsbuch@airbus.com',
+                  'https://airbus.github.io/scikit-decide',
+                  'MIT',
+                  'Scikit-decide is an AI framework for Reinforcement Learning, Automated Planning and Scheduling.',
+                  'Scikit-decide is an AI framework for Reinforcement Learning, Automated Planning and Scheduling.')
+
+
+class EngineImpl(Engine, OneshotPlannerMixin):
+    """Represents the engine interface."""
 
     def __init__(self, **options):
         if len(options) == 0:
@@ -57,22 +67,36 @@ class SolverImpl(up.solvers.Solver):
         return "SkDecide"
 
     @staticmethod
-    def is_oneshot_planner() -> bool:
-        return True
+    def get_credits(**kwargs) -> Optional["Credits"]:
+        return credits
 
     @staticmethod
-    def satisfies(optimality_guarantee: Union[int, str]) -> bool:
-        return False
+    def supported_kind() -> "ProblemKind":
+        supported_kind = ProblemKind()
+        supported_kind.set_problem_class("ACTION_BASED")
+        supported_kind.set_numbers("DISCRETE_NUMBERS")
+        supported_kind.set_numbers("CONTINUOUS_NUMBERS")
+        supported_kind.set_typing("FLAT_TYPING")
+        supported_kind.set_conditions_kind("NEGATIVE_CONDITIONS")
+        supported_kind.set_conditions_kind("DISJUNCTIVE_CONDITIONS")
+        supported_kind.set_conditions_kind("EQUALITY")
+        supported_kind.set_conditions_kind("EXISTENTIAL_CONDITIONS")
+        supported_kind.set_conditions_kind("UNIVERSAL_CONDITIONS")
+        supported_kind.set_fluents_type("NUMERIC_FLUENTS")
+        supported_kind.set_fluents_type("OBJECT_FLUENTS")
+        supported_kind.set_simulated_entities("SIMULATED_EFFECTS")
+        supported_kind.set_effects_kind("INCREASE_EFFECTS")
+        supported_kind.set_effects_kind("DECREASE_EFFECTS")
+        supported_kind.set_effects_kind("CONDITIONAL_EFFECTS")
+        return supported_kind
 
     @staticmethod
     def supports(problem_kind: "ProblemKind") -> bool:
-        supported_kind = ProblemKind()
-        # supported_kind.set_time("DISCRETE_TIME") // This is not supported at the moment
-        return problem_kind.features().issubset(supported_kind.features())
+        return problem_kind <= EngineImpl.supported_kind()
 
     def solve(
         self, problem: "up.model.Problem"
-    ) -> "up.solvers.PlanGenerationResultStatus":
+    ) -> "up.engines.PlanGenerationResultStatus":
         domain = DomainImpl(problem)
         if len(match_solvers(domain, [self._solver_class])) == 0:
             raise RuntimeError(
@@ -93,15 +117,12 @@ class SolverImpl(up.solvers.Solver):
             rollout_domain = DomainImpl(problem, **self._options)
             state = rollout_domain.reset()
             while not rollout_domain.is_terminal(state):
-                action = solver.sample_action(state)
+                action = solver.sample_action(state) # TODO: handle when no action is applicable
                 state = rollout_domain.get_next_state(state, action)
                 plan.append(rollout_domain.grounded_problem.action(action.name))
         seq_plan = rollout_domain.rewrite_back_plan(
             SequentialPlan([ActionInstance(x) for x in plan])
         )
-        return up.solvers.PlanGenerationResult(
+        return up.engines.PlanGenerationResult(
             PlanGenerationResultStatus.SOLVED_SATISFICING, seq_plan, self.name
         )
-
-    def destroy(self):
-        pass
