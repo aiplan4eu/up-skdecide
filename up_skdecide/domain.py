@@ -21,6 +21,16 @@ from skdecide.domains import DeterministicPlanningDomain
 from skdecide.hub.space.gym import ListSpace, MultiBinarySpace
 
 import unified_planning as up
+import unified_planning.model
+import unified_planning.engines
+
+
+class State(up.model.State):
+    def __init__(self, assignments):
+        self._assignments = assignments
+
+    def get_value(self, f: 'up.model.FNode') -> 'up.model.FNode':
+        return self._assignments[f]
 
 
 class D(DeterministicPlanningDomain):
@@ -31,18 +41,19 @@ class D(DeterministicPlanningDomain):
     T_info = None  # Type of additional information in environment outcome
 
 
-class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
+class DomainImpl(D, up.engines.plan_validator.SequentialPlanValidator):
     def __init__(self, problem: "up.model.Problem", **options):
-        up.solvers.plan_validator.SequentialPlanValidator.__init__(self, **options)
+        up.engines.plan_validator.SequentialPlanValidator.__init__(self, **options)
         self._problem = problem
         self._env = problem.env
-        with self._env.factory.Grounder(
-            problem_kind=problem.kind
+        with self._env.factory.Compiler(
+                problem_kind=problem.kind,
+                compilation_kind=up.engines.CompilationKind.GROUNDING
         ) as grounder:
-            gounding_result = grounder.ground(problem)
+            gounding_result = grounder.compile(problem, up.engines.CompilationKind.GROUNDING)
             self._grounded_problem = gounding_result.problem
-            self._lift_action_instance = gounding_result.lift_action_instance
-        self._qsimplifier = up.solvers.plan_validator.QuantifierSimplifier(
+            self._lift_action_instance = gounding_result.map_back_action_instance
+        self._qsimplifier = up.engines.plan_validator.QuantifierSimplifier(
             self._env, self._grounded_problem
         )
         self._initial_state_dict = self._grounded_problem.initial_values.copy()
@@ -59,10 +70,9 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
 
     def _get_next_state(self, memory: D.T_state, action: D.T_event) -> D.T_state:
         assert isinstance(action, up.model.InstantaneousAction)
+        assert len(action.parameters) == 0
         assignments = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
-        new_assignments: Dict[up.model.Expression, up.model.Expression] = {}
-        for ap, oe in zip(action.parameters, action.parameters):
-            assignments[ap] = oe
+        new_assignments: Dict[up.model.FNode, up.model.FNode] = {}
         for p in action.preconditions:
             ps = self._subs_simplify(p, assignments)
             if not (ps.is_bool_constant() and ps.bool_constant_value()):
@@ -88,6 +98,11 @@ class DomainImpl(D, up.solvers.plan_validator.SequentialPlanValidator):
                     new_assignments[ge] = self._subs_simplify(
                         self.manager.Minus(e.fluent, e.value), assignments
                     )
+        if action.simulated_effect is not None:
+            state = State(assignments)
+            values = action.simulated_effect.function(self._grounded_problem, state, {})
+            for k, v in zip(action.simulated_effect.fluents, values):
+                new_assignments[k] = v
         assignments.update(new_assignments)
         for ap in action.parameters:
             del assignments[ap]
