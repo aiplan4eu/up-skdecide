@@ -27,13 +27,15 @@ from skdecide.hub.solver.iw import IW
 from .domain import DomainImpl
 
 
-credits = Credits('Scikit-decide',
-                  'Airbus Team',
-                  'florent.teichteil-koenigsbuch@airbus.com',
-                  'https://airbus.github.io/scikit-decide',
-                  'MIT',
-                  'Scikit-decide is an AI framework for Reinforcement Learning, Automated Planning and Scheduling.',
-                  'Scikit-decide is an AI framework for Reinforcement Learning, Automated Planning and Scheduling.')
+credits = Credits(
+    "Scikit-decide",
+    "Airbus AI Research",
+    "scikit-decide@airbus.com",
+    "https://airbus.github.io/scikit-decide",
+    "MIT",
+    "Scikit-decide is an AI framework for Reinforcement Learning, Automated Planning and Scheduling.",
+    "Scikit-decide is an AI framework for Reinforcement Learning, Automated Planning and Scheduling.",
+)
 
 
 class EngineImpl(Engine, OneshotPlannerMixin):
@@ -117,7 +119,9 @@ class EngineImpl(Engine, OneshotPlannerMixin):
             rollout_domain = DomainImpl(problem, **self._options)
             state = rollout_domain.reset()
             while not rollout_domain.is_terminal(state):
-                action = solver.sample_action(state) # TODO: handle when no action is applicable
+                action = solver.sample_action(
+                    state
+                )  # TODO: handle when no action is applicable
                 state = rollout_domain.get_next_state(state, action)
                 plan.append(rollout_domain.grounded_problem.action(action.name))
         seq_plan = rollout_domain.rewrite_back_plan(
