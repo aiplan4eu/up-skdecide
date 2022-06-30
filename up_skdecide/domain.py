@@ -25,7 +25,7 @@ import unified_planning.model
 import unified_planning.engines
 
 
-class State(up.model.State):
+class State(up.model.ROState):
     def __init__(self, assignments):
         self._assignments = assignments
 
@@ -41,9 +41,8 @@ class D(DeterministicPlanningDomain):
     T_info = None  # Type of additional information in environment outcome
 
 
-class DomainImpl(D, up.engines.plan_validator.SequentialPlanValidator):
+class DomainImpl(D):
     def __init__(self, problem: "up.model.Problem", **options):
-        up.engines.plan_validator.SequentialPlanValidator.__init__(self, **options)
         self._problem = problem
         self._env = problem.env
         with self._env.factory.Compiler(
@@ -53,9 +52,7 @@ class DomainImpl(D, up.engines.plan_validator.SequentialPlanValidator):
             gounding_result = grounder.compile(problem, up.engines.CompilationKind.GROUNDING)
             self._grounded_problem = gounding_result.problem
             self._lift_action_instance = gounding_result.map_back_action_instance
-        self._qsimplifier = up.engines.plan_validator.QuantifierSimplifier(
-            self._env, self._grounded_problem
-        )
+        self._sequential_simulator = up.engines.SequentialSimulator(self._grounded_problem)
         self._initial_state_dict = self._grounded_problem.initial_values.copy()
         self._state_dict_keys = self._initial_state_dict.keys()
 
@@ -71,42 +68,17 @@ class DomainImpl(D, up.engines.plan_validator.SequentialPlanValidator):
     def _get_next_state(self, memory: D.T_state, action: D.T_event) -> D.T_state:
         assert isinstance(action, up.model.InstantaneousAction)
         assert len(action.parameters) == 0
+        events = self._sequential_simulator.get_events(action, [])
+        assert len(events) == 1 # Because it is an instantaneous action
         assignments = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
-        new_assignments: Dict[up.model.FNode, up.model.FNode] = {}
-        for p in action.preconditions:
-            ps = self._subs_simplify(p, assignments)
-            if not (ps.is_bool_constant() and ps.bool_constant_value()):
-                self._last_error = (
-                    f"Precondition {p} of action {str(action)} is not satisfied."
-                )
-                return False
-        for e in action.effects:
-            cond = True
-            if e.is_conditional():
-                ec = self._subs_simplify(e.condition, assignments)
-                assert ec.is_bool_constant()
-                cond = ec.bool_constant_value()
-            if cond:
-                ge = self._get_ground_fluent(e.fluent, assignments)
-                if e.is_assignment():
-                    new_assignments[ge] = self._subs_simplify(e.value, assignments)
-                elif e.is_increase():
-                    new_assignments[ge] = self._subs_simplify(
-                        self.manager.Plus(e.fluent, e.value), assignments
-                    )
-                elif e.is_decrease():
-                    new_assignments[ge] = self._subs_simplify(
-                        self.manager.Minus(e.fluent, e.value), assignments
-                    )
-        if action.simulated_effect is not None:
-            state = State(assignments)
-            values = action.simulated_effect.function(self._grounded_problem, state, {})
-            for k, v in zip(action.simulated_effect.fluents, values):
-                new_assignments[k] = v
-        assignments.update(new_assignments)
-        for ap in action.parameters:
-            del assignments[ap]
-        return list(assignments.values())
+        state = up.model.UPCOWState(assignments)
+        next_state = self._sequential_simulator.apply(events[0], state)
+        if next_state is None:
+            self._last_error = (
+                f"Precondition {p} of action {str(action)} is not satisfied."
+            )
+            return False
+        return [next_state.get_value(k) for k in self._state_dict_keys]
 
     def _get_transition_value(
         self,
@@ -118,9 +90,10 @@ class DomainImpl(D, up.engines.plan_validator.SequentialPlanValidator):
         return Value(cost=1)
 
     def _is_terminal(self, memory: D.T_state) -> D.T_predicate:
-        state = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
+        assignments = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
+        state = up.model.UPCOWState(assignments)
         for g in self._grounded_problem.goals:
-            gs = self._subs_simplify(g, state)
+            gs = self._sequential_simulator._se.evaluate(g, state)
             if not (gs.is_bool_constant() and gs.bool_constant_value()):
                 return False
         return True
@@ -130,16 +103,13 @@ class DomainImpl(D, up.engines.plan_validator.SequentialPlanValidator):
         return ListSpace(self._grounded_problem.actions)
 
     def _get_applicable_actions_from(self, memory: D.T_state) -> Space[D.T_event]:
-        state = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
+        assignments = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
+        state = up.model.UPCOWState(assignments)
         actions = []
         for ai in self._grounded_problem.actions:
-            all_preconditions_hold = True
-            for p in ai.preconditions:
-                ps = self._subs_simplify(p, state)
-                if not (ps.is_bool_constant() and ps.bool_constant_value()):
-                    all_preconditions_hold = False
-                    break
-            if all_preconditions_hold:
+            events = self._sequential_simulator.get_events(ai, [])
+            assert len(events) == 1 # Because it is an instantaneous action
+            if self._sequential_simulator.is_applicable(events[0], state):
                 actions.append(ai)
         return ListSpace(actions)
 

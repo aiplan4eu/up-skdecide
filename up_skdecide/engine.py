@@ -20,7 +20,7 @@ from unified_planning.engines import PlanGenerationResultStatus, Engine, Credits
 from unified_planning.engines.mixins import OneshotPlannerMixin
 from unified_planning.plans import ActionInstance, SequentialPlan
 from unified_planning.model import ProblemKind
-from typing import Optional, Tuple, Callable, Union
+from typing import Optional, Tuple, Callable, Union, IO
 from skdecide.solvers import Solver as SkDecideSolver
 from skdecide.utils import match_solvers
 from skdecide.hub.solver.iw import IW
@@ -96,9 +96,10 @@ class EngineImpl(Engine, OneshotPlannerMixin):
     def supports(problem_kind: "ProblemKind") -> bool:
         return problem_kind <= EngineImpl.supported_kind()
 
-    def solve(
-        self, problem: "up.model.Problem"
-    ) -> "up.engines.PlanGenerationResultStatus":
+    def _solve(self, problem: "up.model.Problem",
+               callback: Optional[Callable[['up.engines.results.PlanGenerationResult'], None]] = None,
+               timeout: Optional[float] = None,
+               output_stream: Optional[IO[str]] = None) -> "up.engines.PlanGenerationResultStatus":
         domain = DomainImpl(problem)
         if len(match_solvers(domain, [self._solver_class])) == 0:
             raise RuntimeError(
@@ -122,8 +123,9 @@ class EngineImpl(Engine, OneshotPlannerMixin):
                 action = solver.sample_action(
                     state
                 )  # TODO: handle when no action is applicable
+                action = rollout_domain.grounded_problem.action(action.name)
                 state = rollout_domain.get_next_state(state, action)
-                plan.append(rollout_domain.grounded_problem.action(action.name))
+                plan.append(action)
         seq_plan = rollout_domain.rewrite_back_plan(
             SequentialPlan([ActionInstance(x) for x in plan])
         )
