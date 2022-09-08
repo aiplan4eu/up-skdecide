@@ -29,7 +29,7 @@ class State(up.model.ROState):
     def __init__(self, assignments):
         self._assignments = assignments
 
-    def get_value(self, f: 'up.model.FNode') -> 'up.model.FNode':
+    def get_value(self, f: "up.model.FNode") -> "up.model.FNode":
         return self._assignments[f]
 
 
@@ -46,22 +46,26 @@ class DomainImpl(D):
         self._problem = problem
         self._env = problem.env
         with self._env.factory.Compiler(
-                problem_kind=problem.kind,
-                compilation_kind=up.engines.CompilationKind.GROUNDING
+            problem_kind=problem.kind,
+            compilation_kind=up.engines.CompilationKind.GROUNDING,
         ) as grounder:
-            gounding_result = grounder.compile(problem, up.engines.CompilationKind.GROUNDING)
+            gounding_result = grounder.compile(
+                problem, up.engines.CompilationKind.GROUNDING
+            )
             self._grounded_problem = gounding_result.problem
             self._lift_action_instance = gounding_result.map_back_action_instance
-        self._sequential_simulator = up.engines.SequentialSimulator(self._grounded_problem)
+        self._sequential_simulator = up.engines.SequentialSimulator(
+            self._grounded_problem
+        )
         self._initial_state_dict = self._grounded_problem.initial_values.copy()
         self._state_dict_keys = self._initial_state_dict.keys()
 
     @property
-    def grounded_problem(self) -> 'up.model.Problem':
+    def grounded_problem(self) -> "up.model.Problem":
         """Returns the grounded problem."""
         return self._grounded_problem
 
-    def rewrite_back_plan(self, plan: 'up.plan.Plan') -> 'up.plan.Plan':
+    def rewrite_back_plan(self, plan: "up.plan.Plan") -> "up.plan.Plan":
         """Returns the back plan rewriter."""
         return plan.replace_action_instances(self._lift_action_instance)
 
@@ -69,7 +73,7 @@ class DomainImpl(D):
         assert isinstance(action, up.model.InstantaneousAction)
         assert len(action.parameters) == 0
         events = self._sequential_simulator.get_events(action, [])
-        assert len(events) == 1 # Because it is an instantaneous action
+        assert len(events) == 1  # Because it is an instantaneous action
         assignments = {k: memory[i] for i, k in enumerate(self._state_dict_keys)}
         state = up.model.UPCOWState(assignments)
         next_state = self._sequential_simulator.apply(events[0], state)
@@ -108,7 +112,7 @@ class DomainImpl(D):
         actions = []
         for ai in self._grounded_problem.actions:
             events = self._sequential_simulator.get_events(ai, [])
-            assert len(events) == 1 # Because it is an instantaneous action
+            assert len(events) == 1  # Because it is an instantaneous action
             if self._sequential_simulator.is_applicable(events[0], state):
                 actions.append(ai)
         return ListSpace(actions)
