@@ -42,6 +42,7 @@ class EngineImpl(Engine, OneshotPlannerMixin):
     """Represents the engine interface."""
 
     def __init__(self, **options):
+        super().__init__()
         if len(options) == 0:
             self._options = {
                 "solver": IW,
@@ -75,6 +76,7 @@ class EngineImpl(Engine, OneshotPlannerMixin):
     @staticmethod
     def supported_kind() -> "ProblemKind":
         supported_kind = ProblemKind()
+        supported_kind.set_problem_type("SIMPLE_NUMERIC_PLANNING")
         supported_kind.set_problem_class("ACTION_BASED")
         supported_kind.set_numbers("DISCRETE_NUMBERS")
         supported_kind.set_numbers("CONTINUOUS_NUMBERS")
@@ -96,10 +98,15 @@ class EngineImpl(Engine, OneshotPlannerMixin):
     def supports(problem_kind: "ProblemKind") -> bool:
         return problem_kind <= EngineImpl.supported_kind()
 
-    def _solve(self, problem: "up.model.Problem",
-               callback: Optional[Callable[['up.engines.results.PlanGenerationResult'], None]] = None,
-               timeout: Optional[float] = None,
-               output_stream: Optional[IO[str]] = None) -> "up.engines.PlanGenerationResultStatus":
+    def _solve(
+        self,
+        problem: "up.model.Problem",
+        callback: Optional[
+            Callable[["up.engines.results.PlanGenerationResult"], None]
+        ] = None,
+        timeout: Optional[float] = None,
+        output_stream: Optional[IO[str]] = None,
+    ) -> "up.engines.PlanGenerationResultStatus":
         domain = DomainImpl(problem)
         if len(match_solvers(domain, [self._solver_class])) == 0:
             raise RuntimeError(
