@@ -12,5 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .domain import DomainImpl
 from .engine import EngineImpl
