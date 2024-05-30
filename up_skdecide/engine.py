@@ -173,7 +173,7 @@ class EngineImpl(Engine, OneshotPlannerMixin):
             solver_config.update({"domain_factory": domain_factory})
         plan = []
         with self._solver_class(**solver_config) as solver:
-            UPDomain.solve_with(solver, domain_factory)
+            solver.solve()
             rollout_domain = domain_factory()
             state = rollout_domain.reset()
             while not rollout_domain.is_terminal(state):
