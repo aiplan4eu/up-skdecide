@@ -19,6 +19,10 @@ setup(
     author_email="aiplan4eu@fbk.eu",
     url="https://www.aiplan4eu-project.eu",
     packages=["up_skdecide"],
-    install_requires=["scikit-decide==0.9.4", "simplejson==3.17.6", "gym==0.23.1"],
+    install_requires=[
+        "unified-planning>=1.1.0",
+        "scikit-decide>=1.0.0",
+        "simplejson==3.17.6",
+    ],
     license="APACHE",
 )
