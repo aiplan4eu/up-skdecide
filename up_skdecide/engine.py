@@ -22,8 +22,6 @@ from unified_planning.engines.mixins import OneshotPlannerMixin
 from unified_planning.plans import ActionInstance, SequentialPlan
 from unified_planning.model import ProblemKind
 from typing import Optional, Callable, IO
-from skdecide.builders.domain import UnrestrictedActions
-from skdecide.builders.solver import ApplicableActions
 from skdecide.hub.domain.up import UPDomain
 from skdecide.solvers import Solver as SkDecideSolver
 from skdecide.utils import match_solvers
@@ -178,19 +176,12 @@ class EngineImpl(Engine, OneshotPlannerMixin):
             solver.solve()
             rollout_domain = domain_factory()
             state = rollout_domain.reset()
-            use_applicable_actions = (
-                not isinstance(rollout_domain, UnrestrictedActions)
-                and isinstance(solver, ApplicableActions)
-                and solver.using_applicable_actions()
-            )
             while not rollout_domain.is_terminal(state):
-                if use_applicable_actions:
-                    # tell the solver about the current applicable actions (e.g for action masking)
-                    solver.retrieve_applicable_actions(domain=rollout_domain)
                 action = solver.sample_action(
-                    state
+                    state,
+                    domain=rollout_domain  # the solver may use this to extract applicable actions
                 )  # TODO: handle when no action is applicable
-                outcome = rollout_domain.step(action)  # apply true step so that retrieve_applicable_actions() works
+                outcome = rollout_domain.step(action)  # apply true step so that applicable actions are updated correctly
                 state = outcome.observation  # UPDomain is fully observable
                 plan.append(rollout_domain._convert_to_skup_action_(action))
         seq_plan = SequentialPlan([ActionInstance(x._up_action) for x in plan])
